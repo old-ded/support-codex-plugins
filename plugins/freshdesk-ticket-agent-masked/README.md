@@ -13,6 +13,18 @@
 - При первом использовании показывает короткую инструкцию.
 - Ничего не изменяет во Freshdesk.
 
+# Установка Freshdesk-агента в Codex
+
+Файл с инструкцией можно скачать из репозитория:
+
+https://github.com/old-ded/support-codex-plugins
+
+## Установка
+
+```bash
+codex plugin marketplace add old-ded/support-codex-plugins --ref main
+codex plugin add freshdesk-ticket-agent-masked@support-team
+
 ## Настройка
 
 1. Создайте или выберите пользователя Freshdesk с минимальными правами, достаточными для чтения тикетов.
@@ -21,3 +33,4 @@
 
 ```bash
 export FRESHDESK_API_KEY="your-api-key"
+
