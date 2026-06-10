@@ -24,6 +24,7 @@ Use this skill when the user asks to find, inspect, summarize, or count Freshdes
 - Ask one short clarifying question only when the condition cannot be safely inferred.
 - Return compact results: ticket id, subject, status, priority, assigned agent/responder id, group id, updated time, due time, and link.
 - For summaries, read the ticket and conversations before summarizing.
+- For batch content analysis, use `analyze_tickets_by_query` instead of manually opening many tickets one by one. Keep batches focused; prefer 20-50 tickets per run.
 
 ## PII Guard Masking
 
@@ -102,6 +103,26 @@ Examples:
 Покажи тикеты по автоматическому возврату -> tag:'auto_refund'
 Найди тикеты TravelportKZ -> tag:'gds_travelportkz'
 ```
+
+## Batch Content Analysis
+
+Use `analyze_tickets_by_query` when the user asks to analyze many tickets by content, find common themes, classify reasons, compare repeated issues, or review a sample.
+
+Good examples:
+
+```text
+Проанализируй 30 тикетов с тегом wrong_email за неделю и выдели основные причины.
+Посмотри 20 тикетов по Аэрофлоту и сгруппируй обращения по темам.
+Проверь выборку тикетов с автовозвратом и найди частые проблемы.
+```
+
+Workflow:
+
+1. Resolve human tag names with `resolve_freshdesk_tags` when needed.
+2. Build a narrow Freshdesk query.
+3. Call `analyze_tickets_by_query` with `max_tickets` up to 50.
+4. Analyze only the masked dataset returned by the tool.
+5. Return themes, counts, examples by ticket id/link, and any caveats about sample size.
 
 ## Freshdesk Search Notes
 

@@ -609,6 +609,63 @@ server.tool(
 );
 
 server.tool(
+  "analyze_tickets_by_query",
+  "Fetch a batch of Freshdesk tickets and masked conversations for content analysis. Read-only.",
+  {
+    query: z
+      .string()
+      .min(1)
+      .describe("Freshdesk ticket search query, for example: status:2 AND tag:'wrong_email'"),
+    max_tickets: z.number().int().min(1).max(50).default(20),
+    include_conversations: z.boolean().default(true),
+    conversation_limit_per_ticket: z.number().int().min(1).max(20).default(10),
+    text_limit_per_message: z.number().int().min(200).max(5000).default(1200),
+  },
+  async ({
+    query,
+    max_tickets,
+    include_conversations,
+    conversation_limit_per_ticket,
+    text_limit_per_message,
+  }) => {
+    const searchResult = await collectSearchTickets(query, max_tickets);
+    if (searchResult.error) return jsonResult(searchResult);
+
+    const records = [];
+    const errors = [];
+
+    for (const ticket of searchResult.tickets) {
+      const ticketRecord = await buildTicketAnalysisRecord(ticket.id, {
+        includeConversations: include_conversations,
+        conversationLimit: conversation_limit_per_ticket,
+        textLimit: text_limit_per_message,
+      });
+
+      if (ticketRecord.error) {
+        errors.push(ticketRecord);
+      } else {
+        records.push(ticketRecord);
+      }
+    }
+
+    return jsonResult({
+      query,
+      requested_limit: max_tickets,
+      found_total: searchResult.total,
+      fetched: records.length,
+      errors,
+      pii_masking: maskingMetadata(),
+      analysis_notes: [
+        "Ticket text and conversations are masked before being returned.",
+        "Use this dataset to identify themes, repeated causes, automation issues, and examples.",
+        "For large studies, run several narrower queries instead of one broad query.",
+      ],
+      tickets: await maskFreshdeskPayload(records),
+    });
+  }
+);
+
+server.tool(
   "get_ticket",
   "Get one Freshdesk ticket by id. Read-only.",
   {
@@ -714,6 +771,113 @@ async function freshdeskGet(path, params = {}) {
   }
 
   return body;
+}
+
+async function collectSearchTickets(query, maxTickets) {
+  const tickets = [];
+  let total = null;
+
+  for (let page = 1; page <= 10 && tickets.length < maxTickets; page += 1) {
+    const result = await freshdeskGet("/api/v2/search/tickets", {
+      query: quoteFreshdeskQuery(query),
+      page: String(page),
+    });
+
+    if (result.error) return result;
+
+    if (typeof result.total === "number") total = result.total;
+
+    const pageTickets = Array.isArray(result.results) ? result.results : [];
+    tickets.push(...pageTickets.map(slimTicket));
+
+    if (pageTickets.length < 30) break;
+  }
+
+  return {
+    total,
+    tickets: tickets.slice(0, maxTickets),
+  };
+}
+
+async function buildTicketAnalysisRecord(ticketId, {
+  includeConversations,
+  conversationLimit,
+  textLimit,
+}) {
+  const ticket = await freshdeskGet(`/api/v2/tickets/${ticketId}`, {
+    include: "requester,stats",
+  });
+
+  if (ticket.error) {
+    return {
+      error: true,
+      ticket_id: ticketId,
+      stage: "get_ticket",
+      details: ticket,
+    };
+  }
+
+  let conversations = [];
+  if (includeConversations) {
+    const conversationResult = await freshdeskGet(`/api/v2/tickets/${ticketId}/conversations`);
+    if (conversationResult.error) {
+      return {
+        error: true,
+        ticket_id: ticketId,
+        stage: "get_ticket_conversations",
+        details: conversationResult,
+      };
+    }
+
+    conversations = Array.isArray(conversationResult)
+      ? conversationResult.slice(0, conversationLimit).map((conversation) =>
+          slimConversation(conversation, textLimit)
+        )
+      : [];
+  }
+
+  return {
+    id: ticket.id,
+    url: `${baseUrl}/a/tickets/${ticket.id}`,
+    subject: truncateText(ticket.subject, textLimit),
+    status: ticket.status,
+    priority: ticket.priority,
+    type: ticket.type,
+    source: ticket.source,
+    tags: ticket.tags || [],
+    group_id: ticket.group_id,
+    responder_id: ticket.responder_id,
+    requester_id: ticket.requester_id,
+    created_at: ticket.created_at,
+    updated_at: ticket.updated_at,
+    due_by: ticket.due_by,
+    fr_due_by: ticket.fr_due_by,
+    is_escalated: ticket.is_escalated,
+    stats: ticket.stats,
+    custom_fields: ticket.custom_fields,
+    description_text: truncateText(
+      ticket.description_text || stripHtml(ticket.description || ""),
+      textLimit
+    ),
+    conversations,
+  };
+}
+
+function slimConversation(conversation, textLimit) {
+  return {
+    id: conversation.id,
+    user_id: conversation.user_id,
+    source: conversation.source,
+    incoming: conversation.incoming,
+    private: conversation.private,
+    support_email: conversation.support_email,
+    created_at: conversation.created_at,
+    updated_at: conversation.updated_at,
+    body_text: truncateText(
+      conversation.body_text || stripHtml(conversation.body || ""),
+      textLimit
+    ),
+  };
 }
 
 async function maskFreshdeskPayload(value) {
@@ -891,6 +1055,26 @@ function cleanDomain(value) {
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "")
     .trim();
+}
+
+function truncateText(value, limit) {
+  if (!value) return "";
+  const text = String(value).replace(/\s+/g, " ").trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 1)}…`;
+}
+
+function stripHtml(value) {
+  return String(value)
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 function searchTagReference(search, category) {

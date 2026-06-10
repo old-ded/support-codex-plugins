@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "freshdesk": {
+      "command": "node",
+      "args": [
+        "./scripts/freshdesk-mcp-server.mjs"
+      ],
+      "env": {
+        "FRESHDESK_DOMAIN": "aviasales.freshdesk.com",
+        "FRESHDESK_API_KEY": "${FRESHDESK_API_KEY}",
+        "PII_GUARD_URL": "https://pii-guard-api.mp.us-east-2.k8s.int.avs.io/api/mask",
+        "PII_GUARD_FAIL_MODE": "block"
+      }
+    }
+  }
+}
