@@ -17,7 +17,7 @@
 
 Файл с инструкцией можно скачать из репозитория:
 
-https://github.com/old-ded/support-codex-plugins
+plugins/freshdesk-ticket-agent-masked/skills/freshdesk-ticket-agent-masked/SKILL.md
 
 ## Установка
 
