@@ -1,0 +1,20 @@
+{
+  "name": "support-team",
+  "interface": {
+    "displayName": "Support Team"
+  },
+  "plugins": [
+    {
+      "name": "freshdesk-ticket-agent-masked",
+      "source": {
+        "source": "local",
+        "path": "./plugins/freshdesk-ticket-agent-masked"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
